@@ -1,3 +1,5 @@
-# UniT: Unified Geometry Learning With Group Autoregressive Transformer
+**UniT: Unified Geometry Learning With Group Autoregressive Transformer**
 
-The paper, code, pretrained models, and documentation will be released after the paper is publicly available.
+**Haotian Wang, Yusong Huang, Zhaonian Kuang, Hongliang Lu, Xinhu Zheng, Meng Yang, and Gang Hua**
+
+Code will be released upon acceptance.
