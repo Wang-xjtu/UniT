@@ -14,7 +14,7 @@
 
 ## News
 
-- **2026-05-18:** Paper, project page, and Hugging Face demo are released.
+- **2026-05-21:** Paper, project page, and Hugging Face demo are released.
 
 ## Overview
 
