@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/arXiv-UniT-red" alt="Paper PDF"></a>
+  <a href="https://arxiv.org/abs/2605.21131"><img src="https://img.shields.io/badge/arXiv-UniT-red" alt="Paper PDF"></a>
   <a href="https://sc2i-hkustgz.github.io/UniT/"><img src="https://img.shields.io/badge/Project_Page-UniT-green" alt="Project Page"></a>
   <a href="https://enceladush-unit.hf.space/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-blue" alt="Hugging Face Demo"></a>
 </p>
@@ -33,10 +33,13 @@ The paper is currently under review, and the code is not publicly available at t
 If you find UniT useful in your research, please consider citing:
 
 ```bibtex
-@article{unit,
-  title={UniT: Unified Geometry Learning With Group Autoregressive Transformer},
-  author={Wang, Haotian and Huang, Yusong and Kuang, Zhaonian and Lu, Hongliang and Zheng, Xinhu and Yang, Meng and Hua, Gang},
-  journal={arXiv preprint},
-  year={2026}
+@misc{wang2026unit,
+      title={UniT: Unified Geometry Learning with Group Autoregressive Transformer}, 
+      author={Haotian Wang and Yusong Huang and Zhaonian Kuang and Hongliang Lu and Xinhu Zheng and Meng Yang and Gang Hua},
+      year={2026},
+      eprint={2605.21131},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2605.21131}, 
 }
 ```
