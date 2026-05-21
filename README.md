@@ -1,7 +1,19 @@
 # UniT: Unified Geometry Learning with Group Autoregressive Transformer
 
 <p align="center">
-  Haotian Wang, Yusong Huang, Zhaonian Kuang, Hongliang Lu, Xinhu Zheng, Meng Yang, and Gang Hua
+  <a href="https://wang-xjtu.github.io/">Haotian Wang</a><sup>1</sup>,
+  Yusong Huang<sup>1</sup>,
+  Zhaonian Kuang<sup>2,1</sup>,
+  Hongliang Lu<sup>1</sup>,
+  <a href="https://facultyprofiles.hkust-gz.edu.cn/faculty-personal-page?id=168">Xinhu Zheng</a><sup>1,†</sup>,
+  <a href="http://www.lianpp.com/xjtu/mu_gr/web/mengyang">Meng Yang</a><sup>2,†</sup>,
+  and <a href="https://www.ganghua.org/">Gang Hua</a><sup>3</sup>
+</p>
+
+<p align="center">
+  <sup>1</sup>The Hong Kong University of Science and Technology (Guangzhou)&nbsp;&nbsp;
+  <sup>2</sup>Xi'an Jiaotong University&nbsp;&nbsp;
+  <sup>3</sup>Amazon.com, Inc.
 </p>
 
 <p align="center">
