@@ -34,15 +34,15 @@
   <img src="assets/teaser.png" alt="UniT teaser" width="100%">
 </p>
 
-UniT is a unified feed-forward model that reformulates a wide range of geometry perception capabilities into a single framework, covering diverse *view configurations*, *modality combinations*, *metric-scale perception*, and *long-horizon scalability*. It supports both online and offline inference over an arbitrary number of views, flexibly incorporates auxiliary modalities such as camera parameters and depth maps, recovers geometry in metric scale measured in meters, and maintains bounded complexity over long horizons in in-the-wild environments.
+**UniT** is a unified feed-forward model that reformulates a wide range of geometry perception capabilities into a single framework, covering diverse *view configurations*, *modality combinations*, *metric-scale perception*, and *long-horizon scalability*. It supports both online and offline inference over an arbitrary number of views, flexibly incorporates auxiliary modalities such as camera parameters and depth maps, recovers geometry in metric scale measured in meters, and maintains bounded complexity over long horizons in in-the-wild environments.
 
 ## Availability
 
-The paper is currently under review, and the code is not publicly available at this stage. In the meantime, we provide a Hugging Face demo for testing UniT.
+The paper is currently under review, and the code is not publicly available at this stage. In the meantime, we provide a Hugging Face demo for testing **UniT**.
 
 ## Citation
 
-If you find UniT useful in your research, please consider citing:
+If you find **UniT** useful in your research, please consider citing:
 
 ```bibtex
 @misc{wang2026unit,
