@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 import importlib
 from pathlib import Path
@@ -43,6 +44,19 @@ def inference_precision(device: str | torch.device) -> torch.dtype:
 def resolve_output_path(path: str | Path | None = None) -> Path:
     """Resolve an explicit destination or the calling project's output root."""
     return (Path.cwd() / "outputs" if path is None else Path(path).expanduser()).resolve()
+
+
+def ensure_output_path(
+    output_dir: str | Path | None, image_paths: Sequence[str | Path],
+    *, protected_roots: Sequence[str | Path] = (),
+) -> None:
+    """Reject a destination inside the input images or bundled examples."""
+    destination = resolve_output_path(output_dir)
+    protected = {(Path.cwd() / "examples").resolve()}
+    protected.update(Path(folder).expanduser().resolve() for folder in protected_roots)
+    protected.update(Path(image).expanduser().resolve().parent for image in image_paths)
+    if any(destination.is_relative_to(folder) for folder in protected):
+        raise ValueError("output_dir must be outside input image directories and example directories")
 
 
 def resolve_sky_model_path(path: str | Path | None = None) -> Path:

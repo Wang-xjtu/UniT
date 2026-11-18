@@ -11,7 +11,7 @@ Xinhu Zheng · Meng Yang · Gang Hua
 [![Project Page](https://img.shields.io/badge/Project-Page-2563eb)](https://omega-hkustgz.github.io/projects/unit/)
 [![Hugging Face Demo](https://img.shields.io/badge/Hugging%20Face-Demo-ffcc4d)](https://enceladush-unit.hf.space/)
 
-[Installation](#installation) · [Usage](#usage) · [Outputs](#outputs) · [Visualization](#visualization)
+[Quick Start](#quick-start) · [Python API](#python-api) · [Inputs & Modes](#optional-inputs-and-modes) · [Visualization](#visualization)
 
 </div>
 
@@ -27,72 +27,87 @@ Xinhu Zheng · Meng Yang · Gang Hua
 - **2026-11-18:** Inference code and pretrained weights released.
 - **2026-05-21:** Paper, project page, and Hugging Face demo released.
 
-## Installation
+<a name="installation"></a>
 
-Use **Python 3.11**:
+## Quick Start
+
+Use **Python 3.11** to install UniT and run the included HKUST_Toy example:
 
 ```bash
 git clone https://github.com/Wang-xjtu/UniT.git
 cd UniT
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install -e '.[demo]'
+python demo_viser.py
 ```
 
-**Weights:** [Haotian-sx/UniT](https://huggingface.co/Haotian-sx/UniT). The Hub loader downloads `checkpoint.pt` automatically on first use.
+[Weights](https://huggingface.co/Haotian-sx/UniT) download automatically on first use. The demo opens the viewer and exports `scenes.ply` to a new folder under `./outputs/`. Open the printed URL to explore the scene.
 
-## Usage
+For your own images, add `--images /path/to/images`. Use `--checkpoint PATH` for local weights and `--output-dir PATH` to choose a new export directory.
 
-### RGB reconstruction
+- `--no-viewer`: export the PLY and exit.
+- `--no-save-ply`: open the viewer without PLY export. Optional sky filtering still saves masks.
+
+Run `python demo_viser.py --help` for all options.
+
+## Python API
 
 ```python
 from unit import UniT
 
 model = UniT.from_pretrained("Haotian-sx/UniT")
-inputs = {"images": "examples/HKUST_Toy/images"}  # Or your image directory
+inputs = {"images": "examples/HKUST_Toy/images"}
 predictions = model.predict(inputs)
-print(predictions["world_points"].shape)
+depth = predictions["cam_points"][..., 2]  # [S, H, W], meters
 ```
 
-`predict()` returns the results in memory; it does not write files. CUDA is used when available, otherwise CPU.
+For [downloaded weights](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), replace the loading line with `model = UniT.from_checkpoint("checkpoints/checkpoint.pt")`.
 
-If you [downloaded the checkpoint](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), load the file directly:
+`images` accepts a directory (filename order), an ordered list of paths, or a list of PIL images or RGB NumPy arrays (`[H, W, 3]`, `uint8` 0–255 or float 0–1). CUDA is used when available, otherwise CPU. `predict()` returns results in memory without writing files.
 
-```python
-model = UniT.from_checkpoint("checkpoints/checkpoint.pt")
-```
+### Outputs
 
-`images` accepts a directory of JPEG, PNG, BMP, TIFF, or WebP files, sorted by filename. Pass a list of paths to choose the order yourself. For images already in memory, pass a list of PIL images or RGB NumPy arrays shaped `[H, W, 3]` with `uint8` values in 0–255 or floats in 0–1.
+UniT predicts metric-scale geometry, including from RGB alone. **Point coordinates, camera translations, and camera-z depth are in meters.** Tensor outputs are on CPU without a batch dimension; `S` is the image count and `H, W` are the processed image dimensions.
 
-### Multi-modal inputs
+| Key | Shape | Meaning |
+| --- | --- | --- |
+| `cam_points` | `[S, H, W, 3]` | Local point maps in each camera's coordinates |
+| `world_points` | `[S, H, W, 3]` | Point maps in a common coordinate system |
+| `extrinsics` | `[S, 3, 4]` | World-to-camera extrinsics in that common system |
+| `cam_points_conf` | `[S, H, W]` | Per-point confidence, not a probability |
+| `images` | `[S, 3, H, W]` | Processed RGB images in `[0, 1]` |
+| `metadata` | dict | Frame order and image preprocessing transforms |
 
-Add depth maps, camera intrinsics, or camera extrinsics from your own data loader:
+The first predicted camera defines the common coordinate system.
+
+## Optional Inputs and Modes
+
+### Geometric inputs
+
+Add any available geometry from your data loader:
 
 ```python
 inputs = {
     "images": image_paths,
-    "depth": depth_maps,     # optional
-    "intrinsic": K,          # optional
-    "extrinsic": poses,      # optional
+    "depth": depth_maps,
+    "intrinsic": K,
+    "extrinsic": poses,
 }
 predictions = model.predict(inputs)
 ```
 
-For **S images**, provide geometry as NumPy arrays or PyTorch tensors **without a batch dimension**. `H₀, W₀` are the original image height and width:
+Geometry uses NumPy arrays or PyTorch tensors **without a batch dimension**, matching the **original images** and their frame order. `H₀, W₀` are the original height and width; resizing is automatic.
 
-| Field | Shape | Meaning |
+| Optional field | Shape | Meaning |
 | --- | --- | --- |
 | `depth` | `[S, H₀, W₀]` or a list of 2D arrays | Camera-z depth in meters; zero means unobserved |
 | `intrinsic` | `[3, 3]` or `[S, 3, 3]` | Shared or per-image pinhole camera intrinsics |
 | `extrinsic` | `[S, 3, 4]` or `[S, 4, 4]` | World-to-camera extrinsics; translation in meters |
 
-- Supply geometry for the **original images**, in the same frame order. Resizing is automatic.
-- Omit unavailable fields or set them to `None`. Use **zero arrays** for missing depth frames; provided camera parameters must be valid for every frame.
-- Camera axes: x right, y down, z forward. Sparse depth is supported; resizing/cropping can discard isolated samples.
+Omit unavailable fields or set them to `None`. Use zero arrays for missing depth frames; provided camera parameters must be valid for every frame. Camera axes are x right, y down, z forward. Sparse depth is supported, though resizing/cropping can discard isolated samples.
 
 ### Inference modes
-
-`group_size` (`G`) sets the number of frames processed together.
 
 ```python
 predictions = model.predict(inputs, group_size=2, queue_capacity=50)
@@ -105,62 +120,11 @@ predictions = model.predict(inputs, group_size=2, queue_capacity=50)
 | Grouped | `group_size=G` | Process groups of up to G images |
 | Hybrid offline-online | `group_size=G, hybrid=True` | Process the first group offline, then continue online |
 
-`queue_capacity` (`Q`) is the KV-cache queue capacity in frames, including the current group. It defaults to the input sequence length and must hold each complete group. Set a fixed capacity to limit cached history on long sequences. Offline mode ignores it.
-
-## Outputs
-
-UniT predicts metric-scale geometry, including from RGB alone. Point coordinates, camera translations, and camera-z depth are in meters.
-
-Tensor outputs are on **CPU**, without a batch dimension. `S` is the number of images; `H, W` are the **processed image height and width**.
-
-| Key | Shape | Meaning |
-| --- | --- | --- |
-| `cam_points` | `[S, H, W, 3]` | Local point maps in each camera's coordinates |
-| `world_points` | `[S, H, W, 3]` | Point maps in a common coordinate system |
-| `extrinsics` | `[S, 3, 4]` | World-to-camera extrinsics in that common system |
-| `cam_points_conf` | `[S, H, W]` | Per-point confidence, not a probability |
-| `images` | `[S, 3, H, W]` | Processed RGB images in `[0, 1]` |
-| `metadata` | dict | Frame order and image preprocessing transforms |
-
-The first predicted camera defines the common coordinate system. Get camera-z depth in meters with:
-
-```python
-depth = predictions["cam_points"][..., 2]  # [S, H, W]
-```
-
-### Save and load results
-
-Save the predictions to a new directory outside your input images:
-
-```python
-from pathlib import Path
-from unit.inference.io import save_predictions
-
-output_dir = Path("outputs/my_run")
-output_dir.mkdir(parents=True, exist_ok=False)
-save_predictions(predictions, output_dir)
-```
-
-This writes `predictions.npz` with the tensor fields listed above, plus `metadata.json` (image transforms), `frames.json` (frame order), and `run.json` (run settings, when provided).
-
-For example, read depth in meters from a saved run:
-
-```python
-import numpy as np
-
-with np.load("outputs/my_run/predictions.npz", allow_pickle=False) as saved:
-    depth = saved["cam_points"][..., 2]  # [S, H, W], meters
-```
+`queue_capacity` (`Q`) limits cached frames, including the current group. It defaults to the sequence length and must fit each group; offline mode ignores it. Set a fixed Q for long sequences. CLI equivalents are `--group-size`, `--queue-capacity`, and `--hybrid`; geometric inputs use the Python API.
 
 ## Visualization
 
-Install the viewer and PLY export dependencies:
-
-```bash
-python -m pip install -e '.[demo]'
-```
-
-Open the predictions from your Python session in Viser:
+View a prediction dict from Python, optionally exporting a PLY:
 
 ```python
 from unit.visualization import visualize
@@ -168,38 +132,9 @@ from unit.visualization import visualize
 visualize(predictions, save_ply=True)
 ```
 
-Open the printed URL. This call keeps the viewer running and exports `scenes.ply` to a new folder under `./outputs/`. Omit `save_ply=True` to view without saving. Stop the viewer with Ctrl+C. Drag to orbit, scroll to zoom, and click a camera to jump to its view.
+Omit `save_ply=True` to view without PLY export. Open the printed URL, drag to orbit, scroll to zoom, or click a camera to visit its view. Use the frame selector and playback controls to explore the sequence; stop the viewer with Ctrl+C.
 
-The default **80 m camera-z depth limit** applies only to the viewer and PLY. Set `max_depth=0` in Python or `--max-depth 0` in the CLI to disable it. Raw predictions are not filtered. PLY uses the initial filter settings; changing viewer controls only changes the display.
-
-- **Confidence Percent** hides the lowest-confidence percentage of points. **Show Cameras**, **Camera Size**, and **Point Size** adjust the scene display.
-- **Show Points from Frames** selects a frame or the full scene. **Playing** and **FPS** control playback; **Current View** shows only the active playback frames, and **Follow Camera** follows their camera poses.
-
-### Command line
-
-Run the included HKUST_Toy example with Hub weights, save predictions and a PLY, and open the viewer:
-
-```bash
-python demo_viser.py
-```
-
-For your own images, here is online inference with a fixed queue, PLY export, and no viewer:
-
-```bash
-python demo_viser.py --images /path/to/images --group-size 1 \
-  --queue-capacity 50 --no-viewer --save-ply --output-dir outputs/cli_run
-```
-
-The CLI accepts RGB image directories; use the Python dict for geometric inputs. Every run saves the NPZ and JSON files described above. Choose a new `--output-dir` each time, or omit it for an automatically named folder under `./outputs/`.
-
-| Option | Default | Purpose |
-| --- | --- | --- |
-| `--max-depth` | `80` meters | Viewer/PLY depth limit; `0` disables it |
-| `--conf-threshold` | `25` percent | Exclude the lowest-confidence points from viewer/PLY |
-| `--playback-group-size` | `1` | Frames shown per playback step, independent of inference grouping |
-| `--port` | `8080` | Port for the browser viewer |
-
-Use `--checkpoint PATH` for local weights. With `--no-viewer`, omit `--save-ply` to save just the arrays and JSON using the base installation. Use `--no-save-ply` to open the viewer without exporting a point cloud. Run `python demo_viser.py --help` for all options, including sky filtering.
+Viewer and PLY use an **80 m camera-z depth limit**. Set `max_depth=0` in Python or `--max-depth 0` in the CLI to disable it. The confidence filter (`init_conf_threshold` / `--conf-threshold`) excludes the lowest-confidence percentage of points. These filters leave predictions unchanged; PLY uses the initial settings, while viewer controls affect only the display.
 
 ## TODO
 

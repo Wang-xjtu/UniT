@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from unit.inference.io import ensure_output_path
+from unit.utils.runtime import ensure_output_path
 
 DEFAULT_MAX_DEPTH = 80.0
 

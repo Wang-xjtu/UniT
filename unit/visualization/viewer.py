@@ -23,9 +23,8 @@ try:
 except ImportError as exc:
     raise ImportError("The viewer requires: pip install -e '.[demo]'") from exc
 
-from unit.inference.io import ensure_output_path
 from unit.utils.geometry import closed_form_inverse_se3
-from unit.utils.runtime import create_output_dir, preflight_optional_features
+from unit.utils.runtime import create_output_dir, ensure_output_path, preflight_optional_features
 from unit.visualization.camera import quat_to_rot
 from unit.visualization.export import (
     DEFAULT_MAX_DEPTH, as_numpy, confidence_mask, point_validity, save_ply_fn,
@@ -221,14 +220,12 @@ def visualize_scene(
     output_dir: str | Path | None = None,
     skyseg_path: str | Path | None = None,
     max_depth: float = DEFAULT_MAX_DEPTH,
-    run_dir: str | Path | None = None,
 ) -> viser.ViserServer:
     """Build a viewer for a prediction dict; public callers use ``visualize``.
 
     Display recentering affects viewer arrays only. Optional exports retain the
-    original prediction coordinates and share the initial viewer mask. The CLI
-    supplies its already-created ``run_dir``; standalone Python calls create a
-    fresh ``output_dir`` only when writing a PLY or sky masks.
+    original prediction coordinates and share the initial viewer mask. A fresh
+    output directory is created only when writing a PLY or sky masks.
     ``playback_group_size`` controls display grouping, independently of inference.
     """
     if playback_group_size <= 0:
@@ -236,8 +233,6 @@ def visualize_scene(
     if not 0 <= init_conf_threshold <= 100:
         raise ValueError("init_conf_threshold must be between 0 and 100")
     validate_max_depth(max_depth)
-    if run_dir is not None and output_dir is not None:
-        raise ValueError("Use run_dir for an existing CLI run or output_dir for a fresh directory, not both")
     metadata = predictions.get("metadata", {})
     image_paths = metadata.get("image_paths") if image_paths is None else image_paths
     images = as_numpy(predictions["images"])
@@ -264,27 +259,24 @@ def visualize_scene(
 
     preflight_optional_features(save_ply=save_ply, mask_sky=mask_sky, skyseg_path=skyseg_path)
 
-    if save_ply or mask_sky or run_dir is not None:
+    if save_ply or mask_sky:
         protected_paths = list(image_paths or [])
         if image_folder is not None:
             protected_paths.append(str(Path(image_folder) / "_input_frame_"))
-        if run_dir is None:
-            ensure_output_path(output_dir, protected_paths)
-            run_dir = create_output_dir(output_dir, prefix="viser")
-            print(f"Writing generated files to {run_dir}")
-        else:
-            run_dir = Path(run_dir).expanduser().resolve()
-            ensure_output_path(run_dir, protected_paths)
-            if not run_dir.is_dir():
-                raise FileNotFoundError(f"Create the run directory before starting the viewer: {run_dir}")
+        ensure_output_path(output_dir, protected_paths)
+        run_dir = create_output_dir(output_dir, prefix="viser")
         if mask_sky:
+            mask_dir = run_dir / "sky_masks"
             confidence = apply_sky_segmentation(
-                confidence, image_paths, run_dir / "sky_masks",
+                confidence, image_paths, mask_dir,
                 skyseg_path=skyseg_path, transforms=transforms,
             )
+            print(f"Saved sky masks to {mask_dir}")
             initial_mask = confidence_mask(confidence, init_conf_threshold, valid_points)
         if save_ply:
-            save_ply_fn(world_points, images, initial_mask, run_dir / "scenes.ply")
+            ply_path = run_dir / "scenes.ply"
+            save_ply_fn(world_points, images, initial_mask, ply_path)
+            print(f"Saved point cloud to {ply_path}")
 
     points, colors, camera_to_world, frame_indices = _scene_arrays(
         images, world_points, extrinsics, valid_points,

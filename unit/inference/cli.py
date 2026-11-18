@@ -9,9 +9,8 @@ from typing import Any
 
 import torch
 
-from unit.inference.io import ensure_output_path
 from unit.inference.scheduling import make_schedule
-from unit.utils.runtime import preflight_optional_features
+from unit.utils.runtime import ensure_output_path, preflight_optional_features
 from unit.visualization.export import DEFAULT_MAX_DEPTH, validate_max_depth
 
 
@@ -35,7 +34,7 @@ def build_parser(
     """Use application-provided asset defaults, or the caller's working directory."""
     root = Path.cwd() if project_root is None else Path(project_root).expanduser().resolve()
     parser = argparse.ArgumentParser(
-        description="Reconstruct RGB images, save predictions, and open the Viser viewer.",
+        description="Reconstruct RGB images, view the scene, and export a point cloud.",
         allow_abbrev=False,
         epilog="For depth or camera observations, pass a dict to UniT.predict() in Python.",
     )
@@ -83,12 +82,12 @@ def build_parser(
     output = parser.add_argument_group("Output and point filtering")
     output.add_argument(
         "--output-dir",
-        help="New results directory (default: a fresh folder under ./outputs/)",
+        help="New directory for exported files (default: a fresh folder under ./outputs/)",
     )
     output.add_argument(
         "--save-ply", action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Export scenes.ply; enabled with the viewer, disabled with --no-viewer unless requested",
+        default=True,
+        help="Export a colored point cloud to scenes.ply (default: enabled)",
     )
     output.add_argument(
         "--conf-threshold", type=float,
@@ -102,7 +101,7 @@ def build_parser(
     viewer = parser.add_argument_group("Viewer")
     viewer.add_argument(
         "--no-viewer", dest="viewer", action="store_false", default=True,
-        help="Save predictions and exit without starting Viser",
+        help="Export the point cloud without starting Viser",
     )
     viewer.add_argument("--port", type=positive_int, default=8080, help="Viewer port (default: 8080)")
     viewer.add_argument(
@@ -122,8 +121,8 @@ def build_parser(
 
 def run_prediction(
     args: argparse.Namespace, image_paths: Sequence[str],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Return predictions for the ordered image paths and the run settings.
+) -> dict[str, Any]:
+    """Return predictions for the ordered image paths.
 
     Check inputs before loading weights. This function owns and releases the
     model before returning, so the viewer only needs the CPU predictions.
@@ -136,9 +135,9 @@ def run_prediction(
     if args.mask_sky and not args.viewer:
         raise ValueError("Sky filtering requires the viewer. Remove --mask-sky or omit --no-viewer.")
     schedule = make_schedule(len(image_paths), args.group_size, args.queue_capacity, args.hybrid)
-    ensure_output_path(args.output_dir, image_paths, protected_roots=[args.protected_examples])
-    if args.output_dir is not None:
-        if Path(args.output_dir).expanduser().exists():
+    if args.save_ply or args.mask_sky:
+        ensure_output_path(args.output_dir, image_paths, protected_roots=[args.protected_examples])
+        if args.output_dir is not None and Path(args.output_dir).expanduser().exists():
             raise FileExistsError(f"Output directory already exists: {args.output_dir}")
     preflight_optional_features(
         viewer=args.viewer, save_ply=args.save_ply, mask_sky=args.mask_sky,
@@ -148,10 +147,8 @@ def run_prediction(
 
     if args.checkpoint is not None:
         model = UniT.from_checkpoint(args.checkpoint, device=args.device)
-        source = {"checkpoint": str(Path(args.checkpoint).expanduser().resolve())}
     else:
         model = UniT.from_pretrained(args.repo_id, device=args.device)
-        source = {"repo_id": args.repo_id}
     model_device = next(model.parameters()).device
     prediction_finished = False
     try:
@@ -173,18 +170,4 @@ def run_prediction(
                 # Preserve a prediction failure if CUDA cleanup fails as well.
                 if prediction_finished:
                     raise
-    settings = {
-        **source,
-        "group_size": args.group_size, "queue_capacity": schedule.queue_capacity,
-        "hybrid": args.hybrid, "target_size": args.target_size,
-        "preprocess_mode": args.preprocess_mode,
-        "stride": args.stride, "device": args.device,
-        "viewer": args.viewer, "save_ply": args.save_ply,
-        "conf_threshold": args.conf_threshold, "max_depth": args.max_depth,
-        "mask_sky": args.mask_sky,
-    }
-    if args.viewer:
-        settings.update(port=args.port, playback_group_size=args.playback_group_size)
-    if args.mask_sky:
-        settings["skyseg_path"] = str(Path(args.skyseg_path).expanduser().resolve())
-    return result, settings
+    return result
