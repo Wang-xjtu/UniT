@@ -22,7 +22,12 @@ def make_schedule(
     queue_capacity: int | None = None,
     hybrid: bool = False,
 ) -> GroupSchedule:
-    """Default cache capacity to sequence length and validate frame counts."""
+    """Build a frame schedule with enough room for a complete cached group.
+
+    Cache capacity defaults to the sequence length. In hybrid mode, omitting
+    ``group_size`` uses that capacity for the first group, clipped to the
+    available frames. Subsequent groups each contain one frame.
+    """
     if queue_capacity is None:
         queue_capacity = frames
     for name, value in (("frames", frames), ("queue_capacity", queue_capacity)):

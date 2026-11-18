@@ -227,6 +227,7 @@ def prepare_inputs(
     values, names, paths = _select_images(images)
     loaded = [_rgb_image(value) for value in values]
     transforms = [_transform_spec(*image.size, target_size, preprocess_mode) for image in loaded]
+    # Pad mixed-size frames to a common canvas so they can be stacked.
     max_height = max(spec["processed_size"][0] for spec in transforms)
     max_width = max(spec["processed_size"][1] for spec in transforms)
     for spec in transforms:
@@ -239,6 +240,8 @@ def prepare_inputs(
         original_height, original_width = spec["original_size"]
         resized_height, resized_width = spec["resized_size"]
         sx, sy = resized_width / original_width, resized_height / original_height
+        # Depth uses this same resize, crop, and padding spec. The affine
+        # also maps intrinsics from original image pixels to the final canvas.
         spec["pixel_transform"] = [[sx, 0.0, float(spec["padding"][0])],
                                    [0.0, sy, float(spec["padding"][1] - spec["crop_top"])],
                                    [0.0, 0.0, 1.0]]

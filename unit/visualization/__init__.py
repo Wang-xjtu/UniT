@@ -1,4 +1,4 @@
-"""Optional visualization tools; imported only when a viewer or export is requested."""
+"""Public visualization API; Viser is imported only when the viewer is called."""
 
 from __future__ import annotations
 
@@ -36,12 +36,15 @@ def visualize(
     required. Sky filtering uses the original paths and transforms recorded in
     the prediction metadata and also requires the ``sky`` extra.
 
-    ``init_conf_threshold`` discards this percentage of the lowest-confidence
-    eligible points. ``max_depth`` limits camera-Z depth in meters (80 by default,
-    including the boundary); set it to 0 to disable depth filtering. These filters
-    affect the viewer and optional PLY only, without changing ``predictions``.
+    ``init_conf_threshold`` selects a confidence percentile among finite,
+    depth-eligible points. Scores equal to the cutoff are kept; scores at or below
+    1e-5 are always excluded. ``max_depth`` limits camera-Z depth in meters (80 by
+    default, including the boundary); set it to 0 to disable depth filtering.
+    These filters affect the viewer and optional PLY only, without changing
+    ``predictions``.
     ``playback_group_size`` controls playback only, not inference grouping.
-    With ``save_ply=True`` a point cloud is saved in a fresh output directory.
+    With ``save_ply=True`` the initial point selection is saved in a fresh output
+    directory, in its original scene coordinates before display recentering.
     The default output root is ``outputs/`` in the working directory.
     Existing outputs and input images are never overwritten.
     The default sky model is ``skyseg.onnx`` in the working directory.

@@ -39,7 +39,10 @@ def _scene_arrays(
     images: np.ndarray, world_points: np.ndarray, extrinsics: np.ndarray,
     valid: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Center the visible depth range and cameras without changing export coordinates."""
+    """Center on finite, depth-eligible points and shift cameras by the same amount.
+
+    Confidence and sky filters do not affect this display-only origin.
+    """
     frames, height, width, _ = world_points.shape
     points = world_points.reshape(-1, 3)
     colors = (images.transpose(0, 2, 3, 1).reshape(-1, 3) * 255).astype(np.uint8)
@@ -224,8 +227,8 @@ def visualize_scene(
     """Build a viewer for a prediction dict; public callers use ``visualize``.
 
     Display recentering affects viewer arrays only. Optional exports retain the
-    original prediction coordinates and share the initial viewer mask. A fresh
-    output directory is created only when writing a PLY or sky masks.
+    original scene coordinates in ``world_points`` and share the initial viewer
+    mask. A fresh output directory is created only when writing a PLY or sky masks.
     ``playback_group_size`` controls display grouping, independently of inference.
     """
     if playback_group_size <= 0:
@@ -281,7 +284,7 @@ def visualize_scene(
             initial_mask = confidence_mask(confidence, init_conf_threshold, valid_points)
         if save_ply:
             ply_path = run_dir / "scenes.ply"
-            # Export the viewer's initial point selection in scene coordinates.
+            # Export the initial point selection before display-only recentering.
             save_ply_fn(world_points, images, initial_mask, ply_path)
             print(f"Saved point cloud to {ply_path}")
 

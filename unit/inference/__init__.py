@@ -1,1 +1,1 @@
-"""Public prediction, preprocessing, and result I/O for UniT."""
+"""Sequence preprocessing, scheduling, and prediction for UniT."""

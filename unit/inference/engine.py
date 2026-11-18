@@ -182,6 +182,8 @@ def run_inference(
                 schedule.queue_capacity,
             )
         outputs: dict[str, list[torch.Tensor]] = {}
+        # Keep all outputs in the first predicted camera's frame. The separate
+        # observed reference above puts supplied camera poses in their own frame.
         predicted_reference = None
         start = step = 0
         while start < frames:

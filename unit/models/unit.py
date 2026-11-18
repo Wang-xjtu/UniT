@@ -140,6 +140,7 @@ class UniT(nn.Module, PyTorchModelHubMixin):
             device,
             queue_capacity,
         )
+        # Cache one camera token per frame in FP32 for the trunk outside autocast.
         self.camera_head.setup_caches(
             batch_size, 1, torch.float32, device, queue_capacity
         )
