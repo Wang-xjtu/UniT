@@ -253,7 +253,10 @@ def visualize_scene(
     # Local point maps give the depth from each camera, even when the scene is rotated.
     camera_depth = as_numpy(predictions["cam_points"])[..., 2] if max_depth > 0 else None
     valid_points = point_validity(
-        world_points, confidence, camera_depth=camera_depth, max_depth=max_depth,
+        world_points,
+        confidence,
+        camera_depth=camera_depth,
+        max_depth=max_depth,
     )
     initial_mask = confidence_mask(confidence, init_conf_threshold, valid_points)
 
@@ -268,13 +271,17 @@ def visualize_scene(
         if mask_sky:
             mask_dir = run_dir / "sky_masks"
             confidence = apply_sky_segmentation(
-                confidence, image_paths, mask_dir,
-                skyseg_path=skyseg_path, transforms=transforms,
+                confidence,
+                image_paths,
+                mask_dir,
+                skyseg_path=skyseg_path,
+                transforms=transforms,
             )
             print(f"Saved sky masks to {mask_dir}")
             initial_mask = confidence_mask(confidence, init_conf_threshold, valid_points)
         if save_ply:
             ply_path = run_dir / "scenes.ply"
+            # Export the viewer's initial point selection in scene coordinates.
             save_ply_fn(world_points, images, initial_mask, ply_path)
             print(f"Saved point cloud to {ply_path}")
 
@@ -283,7 +290,7 @@ def visualize_scene(
     )
     confidence = confidence.reshape(-1)
     valid_points = valid_points.reshape(-1)
-    initial_mask = initial_mask.reshape(-1)
+    initial_display_mask = initial_mask.reshape(-1)
     # Frame membership is fixed for this viewer; no per-tick point-group allocation.
     frame_groups = np.arange(frame_count) // playback_group_size
     group_count = int(np.ceil(frame_count / playback_group_size))
@@ -332,16 +339,23 @@ def visualize_scene(
         )
 
         point_cloud = server.scene.add_point_cloud(
-            name="viser_pcd", points=points[initial_mask], colors=colors[initial_mask],
-            point_size=0.005, point_shape="circle",
+            name="viser_pcd",
+            points=points[initial_display_mask],
+            colors=colors[initial_display_mask],
+            point_size=0.005,
+            point_shape="circle",
         )
         frames, frustums = _add_camera_frames(server, camera_to_world, images)
 
         def update_point_cloud() -> None:
             visible_frames = _frame_visibility(
-                frame_groups, playing=playing.value, current_only=current_only.value,
-                current_group=int(anim_state["current_group"]), selected_frame=frame_selector.value,
+                frame_groups,
+                playing=playing.value,
+                current_only=current_only.value,
+                current_group=int(anim_state["current_group"]),
+                selected_frame=frame_selector.value,
             )
+            # Confidence and frame controls only update the displayed points.
             mask = confidence_mask(confidence, confidence_percent.value, valid_points)
             mask &= visible_frames[frame_indices]
             point_cloud.points = points[mask]

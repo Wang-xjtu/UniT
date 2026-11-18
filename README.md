@@ -11,7 +11,7 @@ Xinhu Zheng · Meng Yang · Gang Hua
 [![Project Page](https://img.shields.io/badge/Project-Page-2563eb)](https://omega-hkustgz.github.io/projects/unit/)
 [![Hugging Face Demo](https://img.shields.io/badge/Hugging%20Face-Demo-ffcc4d)](https://enceladush-unit.hf.space/)
 
-[Quick Start](#quick-start) · [Python API](#python-api) · [Inputs & Modes](#optional-inputs-and-modes) · [Visualization](#visualization)
+[Usage](#usage) · [Input](#input) · [Output](#output) · [Visualization](#visualization)
 
 </div>
 
@@ -27,31 +27,11 @@ Xinhu Zheng · Meng Yang · Gang Hua
 - **2026-11-18:** Inference code and pretrained weights released.
 - **2026-05-21:** Paper, project page, and Hugging Face demo released.
 
-<a name="installation"></a>
+<a name="quick-start"></a>
 
-## Quick Start
+## Usage
 
-Use **Python 3.11** to install UniT and run the included HKUST_Toy example:
-
-```bash
-git clone https://github.com/Wang-xjtu/UniT.git
-cd UniT
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[demo]'
-python demo_viser.py
-```
-
-[Weights](https://huggingface.co/Haotian-sx/UniT) download automatically on first use. The demo opens the viewer and exports `scenes.ply` to a new folder under `./outputs/`. Open the printed URL to explore the scene.
-
-For your own images, add `--images /path/to/images`. Use `--checkpoint PATH` for local weights and `--output-dir PATH` to choose a new export directory.
-
-- `--no-viewer`: export the PLY and exit.
-- `--no-save-ply`: open the viewer without PLY export. Optional sky filtering still saves masks.
-
-Run `python demo_viser.py --help` for all options.
-
-## Python API
+Reconstruct the bundled image sequence from the repository root.
 
 ```python
 from unit import UniT
@@ -59,91 +39,106 @@ from unit import UniT
 model = UniT.from_pretrained("Haotian-sx/UniT")
 inputs = {"images": "examples/HKUST_Toy/images"}
 predictions = model.predict(inputs)
-depth = predictions["cam_points"][..., 2]  # [S, H, W], meters
+print(predictions["world_points"].shape)
 ```
 
-For [downloaded weights](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), replace the loading line with `model = UniT.from_checkpoint("checkpoints/checkpoint.pt")`.
+With a [local checkpoint](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), use `model = UniT.from_checkpoint("checkpoints/checkpoint.pt")`.
 
-`images` accepts a directory (filename order), an ordered list of paths, or a list of PIL images or RGB NumPy arrays (`[H, W, 3]`, `uint8` 0–255 or float 0–1). CUDA is used when available, otherwise CPU. `predict()` returns results in memory without writing files.
+### Installation
 
-### Outputs
+Use Python 3.11.
 
-UniT predicts metric-scale geometry, including from RGB alone. **Point coordinates, camera translations, and camera-z depth are in meters.** Tensor outputs are on CPU without a batch dimension; `S` is the image count and `H, W` are the processed image dimensions.
-
-| Key | Shape | Meaning |
-| --- | --- | --- |
-| `cam_points` | `[S, H, W, 3]` | Local point maps in each camera's coordinates |
-| `world_points` | `[S, H, W, 3]` | Point maps in a common coordinate system |
-| `extrinsics` | `[S, 3, 4]` | World-to-camera extrinsics in that common system |
-| `cam_points_conf` | `[S, H, W]` | Per-point confidence, not a probability |
-| `images` | `[S, 3, H, W]` | Processed RGB images in `[0, 1]` |
-| `metadata` | dict | Frame order and image preprocessing transforms |
-
-The first predicted camera defines the common coordinate system.
-
-## Optional Inputs and Modes
-
-### Geometric inputs
-
-Add any available geometry from your data loader:
-
-```python
-inputs = {
-    "images": image_paths,
-    "depth": depth_maps,
-    "intrinsic": K,
-    "extrinsic": poses,
-}
-predictions = model.predict(inputs)
+```bash
+git clone https://github.com/Wang-xjtu/UniT.git
+cd UniT
+python -m pip install -e .
 ```
-
-Geometry uses NumPy arrays or PyTorch tensors **without a batch dimension**, matching the **original images** and their frame order. `H₀, W₀` are the original height and width; resizing is automatic.
-
-| Optional field | Shape | Meaning |
-| --- | --- | --- |
-| `depth` | `[S, H₀, W₀]` or a list of 2D arrays | Camera-z depth in meters; zero means unobserved |
-| `intrinsic` | `[3, 3]` or `[S, 3, 3]` | Shared or per-image pinhole camera intrinsics |
-| `extrinsic` | `[S, 3, 4]` or `[S, 4, 4]` | World-to-camera extrinsics; translation in meters |
-
-Omit unavailable fields or set them to `None`. Use zero arrays for missing depth frames; provided camera parameters must be valid for every frame. Camera axes are x right, y down, z forward. Sparse depth is supported, though resizing/cropping can discard isolated samples.
 
 ### Inference modes
 
-```python
-predictions = model.predict(inputs, group_size=2, queue_capacity=50)
-```
-
 | Mode | Arguments | Behavior |
 | --- | --- | --- |
-| Offline | `group_size=None` (default) | Reconstruct all images jointly |
-| Online | `group_size=1` | Process one image at a time |
-| Grouped | `group_size=G` | Process groups of up to G images |
-| Hybrid offline-online | `group_size=G, hybrid=True` | Process the first group offline, then continue online |
+| Offline | `group_size=None` (default) | Process all frames together |
+| Online | `group_size=1` | Process one frame at a time |
+| Grouped | `group_size=G` | Process up to G frames at a time |
+| Hybrid | `group_size=G, hybrid=True` | Process up to G frames first, then one at a time |
 
-`queue_capacity` (`Q`) limits cached frames, including the current group. It defaults to the sequence length and must fit each group; offline mode ignores it. Set a fixed Q for long sequences. CLI equivalents are `--group-size`, `--queue-capacity`, and `--hybrid`; geometric inputs use the Python API.
+In cached modes, `queue_capacity` defaults to the number of input frames. Set a smaller value to limit the cache, with enough room for a full group.
+
+## Input
+
+### RGB only
+
+Pass an image directory or an ordered list of paths, PIL images, or RGB NumPy arrays as `images`. Files in a directory are read in filename order. RGB arrays have shape `[H, W, 3]` with `uint8` values in 0–255 or floats in 0–1.
+
+### Multi-modal
+
+Add any geometry you have to the same `inputs` dictionary before calling `predict()`.
+
+```python
+inputs.update(depth=depth_maps, intrinsic=K, extrinsic=poses)
+```
+
+Use NumPy arrays or PyTorch tensors without a batch dimension. Match the original images and their order. `S` is the number of frames, and `H₀` and `W₀` are the original image dimensions.
+
+| Optional field | Shape | Meaning |
+| --- | --- | --- |
+| `depth` | `[S, H₀, W₀]` or a list of 2D maps | Camera-z depth in meters |
+| `intrinsic` | `[3, 3]` or `[S, 3, 3]` | Shared or per-frame intrinsics |
+| `extrinsic` | `[S, 3, 4]` or `[S, 4, 4]` | World-to-camera transforms with translation in meters |
+
+Omit fields you do not have. Use zeros for missing depth pixels or frames. Camera parameters, when provided, must cover every frame. Camera axes are x right, y down, and z forward.
+
+## Output
+
+Point coordinates, camera translations, and depth are in meters, even with RGB-only input. `H` and `W` are the processed image dimensions. To get camera-z depth:
+
+```python
+depth = predictions["cam_points"][..., 2]  # [S, H, W]
+```
+
+| Key | Shape | Meaning |
+| --- | --- | --- |
+| `cam_points` | `[S, H, W, 3]` | Point maps in each frame's camera coordinates |
+| `world_points` | `[S, H, W, 3]` | Point maps in the first predicted camera's coordinates |
+| `extrinsics` | `[S, 3, 4]` | World-to-camera transforms |
+| `cam_points_conf` | `[S, H, W]` | Per-point confidence |
 
 ## Visualization
 
-View a prediction dict from Python, optionally exporting a PLY:
+```bash
+python -m pip install -e '.[demo]'
+python demo_viser.py
+```
+
+Open the URL printed in your terminal. The demo writes `scenes.ply` to a new folder under `outputs/`. To use your own images, add `--images /path/to/images`.
+
+- `--no-save-ply` opens the viewer without exporting a point cloud.
+- `--no-viewer` exports the point cloud and exits.
+
+To view predictions you already have in Python:
 
 ```python
 from unit.visualization import visualize
 
-visualize(predictions, save_ply=True)
+visualize(predictions)
 ```
 
-Omit `save_ply=True` to view without PLY export. Open the printed URL, drag to orbit, scroll to zoom, or click a camera to visit its view. Use the frame selector and playback controls to explore the sequence; stop the viewer with Ctrl+C.
+Pass `save_ply=True` to export a point cloud from Python. Both the viewer and PLY use an **80 m camera-z depth limit** by default. Set `--max-depth 0` on the command line or `max_depth=0` in Python to disable the limit. `--conf-threshold` (`init_conf_threshold` in Python) is the percentage of low-confidence points to filter out. For other options, run `python demo_viser.py --help`.
 
-Viewer and PLY use an **80 m camera-z depth limit**. Set `max_depth=0` in Python or `--max-depth 0` in the CLI to disable it. The confidence filter (`init_conf_threshold` / `--conf-threshold`) excludes the lowest-confidence percentage of points. These filters leave predictions unchanged; PLY uses the initial settings, while viewer controls affect only the display.
+---
 
-## TODO
+<details>
+<summary>TODO, citation and acknowledgements</summary>
+
+### TODO
 
 - [x] Inference code
 - [ ] VGGT-Long-style framework integration
 - [ ] Training code
 - [ ] Evaluation protocol
 
-## Citation
+### Citation
 
 BibTeX for the arXiv preprint:
 
@@ -159,8 +154,10 @@ BibTeX for the arXiv preprint:
 }
 ```
 
-## Acknowledgements & License
+### Acknowledgements
 
 We thank [VGGT](https://github.com/facebookresearch/vggt), [CUT3R](https://github.com/CUT3R/CUT3R), [Pi3](https://github.com/yyfz/Pi3), and [StreamVGGT](https://github.com/wzzheng/StreamVGGT) for their open-source contributions. Visualization uses [Viser](https://github.com/nerfstudio-project/viser) and optional [Sky Segmentation](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing).
+
+</details>
 
 See [LICENSE.txt](LICENSE.txt) and [Third-party notices](THIRD_PARTY_NOTICES.md) for the code. The pretrained weights are distributed under [CC BY-NC 4.0](https://huggingface.co/Haotian-sx/UniT/blob/main/LICENSE.txt).

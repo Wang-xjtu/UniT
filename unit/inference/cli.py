@@ -120,7 +120,8 @@ def build_parser(
 
 
 def run_prediction(
-    args: argparse.Namespace, image_paths: Sequence[str],
+    args: argparse.Namespace,
+    image_paths: Sequence[str],
 ) -> dict[str, Any]:
     """Return predictions for the ordered image paths.
 
@@ -134,13 +135,22 @@ def run_prediction(
     validate_max_depth(args.max_depth)
     if args.mask_sky and not args.viewer:
         raise ValueError("Sky filtering requires the viewer. Remove --mask-sky or omit --no-viewer.")
-    schedule = make_schedule(len(image_paths), args.group_size, args.queue_capacity, args.hybrid)
+
+    # The default cache capacity counts the frames left after applying stride.
+    schedule = make_schedule(
+        len(image_paths),
+        group_size=args.group_size,
+        queue_capacity=args.queue_capacity,
+        hybrid=args.hybrid,
+    )
     if args.save_ply or args.mask_sky:
         ensure_output_path(args.output_dir, image_paths, protected_roots=[args.protected_examples])
         if args.output_dir is not None and Path(args.output_dir).expanduser().exists():
             raise FileExistsError(f"Output directory already exists: {args.output_dir}")
     preflight_optional_features(
-        viewer=args.viewer, save_ply=args.save_ply, mask_sky=args.mask_sky,
+        viewer=args.viewer,
+        save_ply=args.save_ply,
+        mask_sky=args.mask_sky,
         skyseg_path=args.skyseg_path,
     )
     from unit import UniT
@@ -152,10 +162,13 @@ def run_prediction(
     model_device = next(model.parameters()).device
     prediction_finished = False
     try:
-        result = model.predict(
-            {"images": image_paths}, group_size=args.group_size,
-            queue_capacity=schedule.queue_capacity, hybrid=args.hybrid,
-            target_size=args.target_size, preprocess_mode=args.preprocess_mode,
+        predictions = model.predict(
+            {"images": image_paths},
+            group_size=args.group_size,
+            queue_capacity=schedule.queue_capacity,
+            hybrid=args.hybrid,
+            target_size=args.target_size,
+            preprocess_mode=args.preprocess_mode,
         )
         prediction_finished = True
     finally:
@@ -170,4 +183,4 @@ def run_prediction(
                 # Preserve a prediction failure if CUDA cleanup fails as well.
                 if prediction_finished:
                     raise
-    return result
+    return predictions
