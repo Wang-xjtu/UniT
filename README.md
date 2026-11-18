@@ -147,17 +147,14 @@ Run `python demo_viser.py --help` for more options.
 
 ---
 
-<details>
-<summary>TODO, citation and acknowledgements</summary>
-
-### TODO
+## TODO
 
 - [x] Inference code
 - [ ] VGGT-Long-style framework integration
 - [ ] Training code
 - [ ] Evaluation protocol
 
-### Citation
+## Citation
 
 BibTeX for the arXiv preprint:
 
@@ -173,10 +170,8 @@ BibTeX for the arXiv preprint:
 }
 ```
 
-### Acknowledgements
+## Acknowledgements
 
 We thank [VGGT](https://github.com/facebookresearch/vggt), [CUT3R](https://github.com/CUT3R/CUT3R), [Pi3](https://github.com/yyfz/Pi3), and [StreamVGGT](https://github.com/wzzheng/StreamVGGT) for their open-source contributions. Visualization uses [Viser](https://github.com/nerfstudio-project/viser) and optional [Sky Segmentation](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing).
-
-</details>
 
 See [LICENSE.txt](LICENSE.txt) and [Third-party notices](THIRD_PARTY_NOTICES.md) for the code. The pretrained weights are distributed under [CC BY-NC 4.0](https://huggingface.co/Haotian-sx/UniT/blob/main/LICENSE.txt).
