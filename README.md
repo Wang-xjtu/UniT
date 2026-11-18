@@ -64,6 +64,7 @@ python -m pip install -e .
 | Hybrid | `group_size=G, hybrid=True` | Process up to G frames first, then one at a time |
 
 ```python
+# For example, binocular streaming with an 8-frame cache queue 
 predictions = model.predict(inputs, group_size=2, queue_capacity=8)
 ```
 
