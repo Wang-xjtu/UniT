@@ -63,35 +63,42 @@ python -m pip install -e .
 | Grouped | `group_size=G` | Process up to G frames at a time |
 | Hybrid | `group_size=G, hybrid=True` | Process up to G frames first, then one at a time |
 
+```python
+predictions = model.predict(inputs, group_size=2, queue_capacity=8)
+```
+
 In cached modes, `queue_capacity` defaults to the number of input frames. Set a smaller value to limit the cache, with enough room for a full group.
 
 ## Input
 
-### RGB only
-
-Pass an image directory or an ordered list of paths, PIL images, or RGB NumPy arrays as `images`. Files in a directory are read in filename order. RGB arrays have shape `[H, W, 3]` with `uint8` values in 0–255 or floats in 0–1.
-
-### Multi-modal
-
-Add any geometry you have to the same `inputs` dictionary before calling `predict()`.
+Replace the example `inputs` with your own sequence. Only `images` is required. Add any geometry you have and leave out the other fields.
 
 ```python
-inputs.update(depth=depth_maps, intrinsic=K, extrinsic=poses)
+inputs = {
+    "images": image_paths,
+    "depth": depth_maps,      # optional
+    "intrinsic": intrinsics,  # optional
+    "extrinsic": poses,       # optional
+}
+predictions = model.predict(inputs)
 ```
 
-Use NumPy arrays or PyTorch tensors without a batch dimension. Match the original images and their order. `S` is the number of frames, and `H₀` and `W₀` are the original image dimensions.
+`S` is the number of frames, and `H₀` and `W₀` are the original image dimensions.
 
-| Optional field | Shape | Meaning |
+| Field | What to pass | Notes |
 | --- | --- | --- |
-| `depth` | `[S, H₀, W₀]` or a list of 2D maps | Camera-z depth in meters |
-| `intrinsic` | `[3, 3]` or `[S, 3, 3]` | Shared or per-frame intrinsics |
+| `images` | A directory, a list of paths, or a list of PIL images or RGB NumPy arrays | Directories are read in filename order. Lists keep their order. |
+| `depth` | `[S, H₀, W₀]` or a list of 2D maps | Camera-z depth in meters. Use zeros for missing pixels or frames. |
+| `intrinsic` | `[3, 3]` or `[S, 3, 3]` | Shared or per-frame pinhole intrinsics in original image pixels |
 | `extrinsic` | `[S, 3, 4]` or `[S, 4, 4]` | World-to-camera transforms with translation in meters |
 
-Omit fields you do not have. Use zeros for missing depth pixels or frames. Camera parameters, when provided, must cover every frame. Camera axes are x right, y down, and z forward.
+Image directories support JPEG, PNG, BMP, TIFF, and WebP. RGB arrays have shape `[H₀, W₀, 3]`, with `uint8` values in 0–255 or floats in 0–1.
+
+Pass geometry as NumPy arrays or PyTorch tensors without a batch dimension, in the same order as the images. UniT adjusts depth and intrinsics when it resizes, crops, or pads the images. Camera parameters, when supplied, must cover every frame. Camera axes are x right, y down, and z forward.
 
 ## Output
 
-Point coordinates, camera translations, and depth are in meters, even with RGB-only input. `H` and `W` are the processed image dimensions. To get camera-z depth:
+The tensors in `predictions` are on CPU and have no batch dimension. Point coordinates, camera translations, and depth are in meters, including for RGB-only input. Use the local point map to read camera-z depth.
 
 ```python
 depth = predictions["cam_points"][..., 2]  # [S, H, W]
@@ -104,19 +111,15 @@ depth = predictions["cam_points"][..., 2]  # [S, H, W]
 | `extrinsics` | `[S, 3, 4]` | World-to-camera transforms |
 | `cam_points_conf` | `[S, H, W]` | Per-point confidence |
 
+`H` and `W` are the processed image dimensions. For the mapping from original to processed pixels, see `predictions["metadata"]["transforms"]`.
+
 ## Visualization
+
+Install the demo extra to view the predictions from above.
 
 ```bash
 python -m pip install -e '.[demo]'
-python demo_viser.py
 ```
-
-Open the URL printed in your terminal. The demo writes `scenes.ply` to a new folder under `outputs/`. To use your own images, add `--images /path/to/images`.
-
-- `--no-save-ply` opens the viewer without exporting a point cloud.
-- `--no-viewer` exports the point cloud and exits.
-
-To view predictions you already have in Python:
 
 ```python
 from unit.visualization import visualize
@@ -124,7 +127,16 @@ from unit.visualization import visualize
 visualize(predictions)
 ```
 
-Pass `save_ply=True` to export a point cloud from Python. Both the viewer and PLY use an **80 m camera-z depth limit** by default. Set `--max-depth 0` on the command line or `max_depth=0` in Python to disable the limit. `--conf-threshold` (`init_conf_threshold` in Python) is the percentage of low-confidence points to filter out. For other options, run `python demo_viser.py --help`.
+Open the URL printed in your terminal. Pass `save_ply=True` to also export a point cloud from Python.
+
+To reconstruct and view the bundled sequence in one command, run `python demo_viser.py`. Add `--images /path/to/images` to use your own images. The demo saves `scenes.ply` in a new folder under `outputs/`.
+
+- `--no-save-ply` opens the viewer without exporting a point cloud.
+- `--no-viewer` exports the point cloud and exits.
+
+The viewer and PLY use an **80 m camera-z depth limit** by default. Use `--max-depth 0` or `max_depth=0` in Python to disable it. The confidence cutoff is a percentile, set by `--conf-threshold` (default 25) or `init_conf_threshold` in Python (default 50). PLY export uses the initial settings. The prediction tensors keep all points.
+
+Run `python demo_viser.py --help` for the other options.
 
 ---
 
