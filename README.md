@@ -39,7 +39,7 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-**Weights:** [Haotian-sx/UniT](https://huggingface.co/Haotian-sx/UniT). The online loader downloads `checkpoint.pt` automatically on first use.
+**Weights:** [Haotian-sx/UniT](https://huggingface.co/Haotian-sx/UniT). The Hub loader downloads `checkpoint.pt` automatically on first use.
 
 ## Usage
 
@@ -49,10 +49,12 @@ python -m pip install -e .
 from unit import UniT
 
 model = UniT.from_pretrained("Haotian-sx/UniT")
-inputs = {"images": "examples/HKUST_Toy/images"}
+inputs = {"images": "examples/HKUST_Toy/images"}  # Or your image directory
 predictions = model.predict(inputs)
 print(predictions["world_points"].shape)
 ```
+
+`predict()` returns the results in memory; it does not write files. CUDA is used when available, otherwise CPU.
 
 If you [downloaded the checkpoint](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), load the file directly:
 
@@ -60,7 +62,7 @@ If you [downloaded the checkpoint](https://huggingface.co/Haotian-sx/UniT/resolv
 model = UniT.from_checkpoint("checkpoints/checkpoint.pt")
 ```
 
-`images` accepts a directory (sorted by filename) or an ordered list of paths, PIL images, or RGB NumPy arrays (`[H, W, 3]`, `uint8` 0–255 or float 0–1).
+`images` accepts a directory of JPEG, PNG, BMP, TIFF, or WebP files, sorted by filename. Pass a list of paths to choose the order yourself. For images already in memory, pass a list of PIL images or RGB NumPy arrays shaped `[H, W, 3]` with `uint8` values in 0–255 or floats in 0–1.
 
 ### Multi-modal inputs
 
@@ -76,7 +78,7 @@ inputs = {
 predictions = model.predict(inputs)
 ```
 
-For **S images**, use NumPy arrays or PyTorch tensors **without a batch dimension**. `H₀, W₀` are the original image height and width:
+For **S images**, provide geometry as NumPy arrays or PyTorch tensors **without a batch dimension**. `H₀, W₀` are the original image height and width:
 
 | Field | Shape | Meaning |
 | --- | --- | --- |
@@ -103,11 +105,11 @@ predictions = model.predict(inputs, group_size=2, queue_capacity=50)
 | Grouped | `group_size=G` | Process groups of up to G images |
 | Hybrid offline-online | `group_size=G, hybrid=True` | Process the first group offline, then continue online |
 
-`queue_capacity` (`Q`) is the KV-cache queue capacity in frames, including the current group. It defaults to the input sequence length and must hold each complete group. Offline mode ignores it.
+`queue_capacity` (`Q`) is the KV-cache queue capacity in frames, including the current group. It defaults to the input sequence length and must hold each complete group. Set a fixed capacity to limit cached history on long sequences. Offline mode ignores it.
 
 ## Outputs
 
-All geometric predictions are in metric scale, including with RGB-only input. Point coordinates, camera translations, and camera-z depth are in meters.
+UniT predicts metric-scale geometry, including from RGB alone. Point coordinates, camera translations, and camera-z depth are in meters.
 
 Tensor outputs are on **CPU**, without a batch dimension. `S` is the number of images; `H, W` are the **processed image height and width**.
 
@@ -120,36 +122,84 @@ Tensor outputs are on **CPU**, without a batch dimension. `S` is the number of i
 | `images` | `[S, 3, H, W]` | Processed RGB images in `[0, 1]` |
 | `metadata` | dict | Frame order and image preprocessing transforms |
 
-The first predicted camera defines the common coordinate system. Get camera-z depth with:
+The first predicted camera defines the common coordinate system. Get camera-z depth in meters with:
 
 ```python
 depth = predictions["cam_points"][..., 2]  # [S, H, W]
 ```
 
+### Save and load results
+
+Save the predictions to a new directory outside your input images:
+
+```python
+from pathlib import Path
+from unit.inference.io import save_predictions
+
+output_dir = Path("outputs/my_run")
+output_dir.mkdir(parents=True, exist_ok=False)
+save_predictions(predictions, output_dir)
+```
+
+This writes `predictions.npz` with the tensor fields listed above, plus `metadata.json` (image transforms), `frames.json` (frame order), and `run.json` (run settings, when provided).
+
+For example, read depth in meters from a saved run:
+
+```python
+import numpy as np
+
+with np.load("outputs/my_run/predictions.npz", allow_pickle=False) as saved:
+    depth = saved["cam_points"][..., 2]  # [S, H, W], meters
+```
+
 ## Visualization
 
-Install the optional viewer:
+Install the viewer and PLY export dependencies:
 
 ```bash
 python -m pip install -e '.[demo]'
 ```
 
+Open the predictions from your Python session in Viser:
+
 ```python
 from unit.visualization import visualize
 
-visualize(predictions)
+visualize(predictions, save_ply=True)
 ```
 
-Or run the RGB demo with PLY export:
+Open the printed URL. This call keeps the viewer running and exports `scenes.ply` to a new folder under `./outputs/`. Omit `save_ply=True` to view without saving. Stop the viewer with Ctrl+C. Drag to orbit, scroll to zoom, and click a camera to jump to its view.
+
+The default **80 m camera-z depth limit** applies only to the viewer and PLY. Set `max_depth=0` in Python or `--max-depth 0` in the CLI to disable it. Raw predictions are not filtered. PLY uses the initial filter settings; changing viewer controls only changes the display.
+
+- **Confidence Percent** hides the lowest-confidence percentage of points. **Show Cameras**, **Camera Size**, and **Point Size** adjust the scene display.
+- **Show Points from Frames** selects a frame or the full scene. **Playing** and **FPS** control playback; **Current View** shows only the active playback frames, and **Follow Camera** follows their camera poses.
+
+### Command line
+
+Run the included HKUST_Toy example with Hub weights, save predictions and a PLY, and open the viewer:
 
 ```bash
-python demo_viser.py --repo-id Haotian-sx/UniT \
-  --images examples/HKUST_Toy/images --save-ply
+python demo_viser.py
 ```
 
-Use `--checkpoint PATH` for local weights. Both loading options also work with `infer.py`, which runs without a viewer.
+For your own images, here is online inference with a fixed queue, PLY export, and no viewer:
 
-Open the printed URL. Exports are saved in a new folder under `./outputs/`. Run either script with `--help` for more options.
+```bash
+python demo_viser.py --images /path/to/images --group-size 1 \
+  --queue-capacity 50 --no-viewer --save-ply --output-dir outputs/cli_run
+```
+
+The CLI accepts RGB image directories; use the Python dict for geometric inputs. Every run saves the NPZ and JSON files described above. Choose a new `--output-dir` each time, or omit it for an automatically named folder under `./outputs/`.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--max-depth` | `80` meters | Viewer/PLY depth limit; `0` disables it |
+| `--conf-threshold` | `25` percent | Exclude the lowest-confidence points from viewer/PLY |
+| `--playback-group-size` | `1` | Frames shown per playback step, independent of inference grouping |
+| `--port` | `8080` | Port for the browser viewer |
+
+Use `--checkpoint PATH` for local weights. With `--no-viewer`, omit `--save-ply` to save just the arrays and JSON using the base installation. Use `--no-save-ply` to open the viewer without exporting a point cloud. Run `python demo_viser.py --help` for all options, including sky filtering.
 
 ## TODO
 

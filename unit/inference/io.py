@@ -46,12 +46,12 @@ def save_predictions(
     output_dir: str | Path,
     settings: Mapping[str, Any] | None = None,
 ) -> Path:
-    """Save CPU tensor predictions and frame/transform metadata without overwrites.
+    """Save the full prediction from ``UniT.predict`` and return its directory.
 
-    ``output_dir`` must already be a fresh, independent directory. Tensor values
-    are written to ``predictions.npz``; non-tensor metadata is kept in JSON.
-    Input directories recorded in prediction metadata and local examples are
-    protected even when this function is called directly.
+    Create ``output_dir`` outside the input image directories before calling.
+    ``predictions.npz`` contains float32 arrays; the JSON files record the pixel
+    transforms, frame order, and optional run settings. Existing result files
+    are never overwritten.
     """
     metadata = result.get("metadata", {})
     destination = Path(output_dir).expanduser().resolve()
@@ -65,7 +65,9 @@ def save_predictions(
     }
     if not arrays or not all(np.isfinite(array).all() for array in arrays.values()):
         raise ValueError("Inference returned empty or non-finite predictions")
-    targets = [destination / name for name in ("predictions.npz", "metadata.json", "frames.json", "run.json")]
+    targets = [
+        destination / name for name in ("predictions.npz", "metadata.json", "frames.json", "run.json")
+    ]
     if any(path.exists() for path in targets):
         raise FileExistsError(f"Refusing to overwrite predictions in {destination}")
     metadata_json = json.dumps(metadata, indent=2, default=_json_value, allow_nan=False) + "\n"

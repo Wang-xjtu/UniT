@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
+from unit.visualization.export import DEFAULT_MAX_DEPTH
+
 if TYPE_CHECKING:
     import viser
 
@@ -25,7 +27,7 @@ def visualize(
     image_paths: Sequence[str | Path] | None = None,
     output_dir: str | Path | None = None,
     skyseg_path: str | Path | None = None,
-    prediction_settings: dict[str, Any] | None = None,
+    max_depth: float = DEFAULT_MAX_DEPTH,
 ) -> viser.ViserServer:
     """Explore a prediction dict returned by :meth:`UniT.predict` in Viser.
 
@@ -35,7 +37,10 @@ def visualize(
     the prediction metadata and also requires the ``sky`` extra.
 
     ``init_conf_threshold`` discards this percentage of the lowest-confidence
-    points. ``playback_group_size`` controls playback only, not inference grouping.
+    eligible points. ``max_depth`` limits camera-Z depth in meters (80 by default,
+    including the boundary); set it to 0 to disable depth filtering. These filters
+    affect the viewer and optional PLY only, without changing ``predictions``.
+    ``playback_group_size`` controls playback only, not inference grouping.
     With ``save_ply=True`` a point cloud is saved in a fresh output directory.
     The default output root is ``outputs/`` in the working directory.
     Existing outputs and input images are never overwritten.
@@ -58,5 +63,5 @@ def visualize(
         image_paths=image_paths,
         output_dir=output_dir,
         skyseg_path=skyseg_path,
-        prediction_settings=prediction_settings,
+        max_depth=max_depth,
     )

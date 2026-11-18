@@ -23,11 +23,14 @@ try:
 except ImportError as exc:
     raise ImportError("The viewer requires: pip install -e '.[demo]'") from exc
 
-from unit.inference.io import ensure_output_path, save_predictions
+from unit.inference.io import ensure_output_path
 from unit.utils.geometry import closed_form_inverse_se3
 from unit.utils.runtime import create_output_dir, preflight_optional_features
 from unit.visualization.camera import quat_to_rot
-from unit.visualization.export import as_numpy, point_mask, save_ply_fn
+from unit.visualization.export import (
+    DEFAULT_MAX_DEPTH, as_numpy, confidence_mask, point_validity, save_ply_fn,
+    validate_max_depth,
+)
 from unit.visualization.sky import apply_sky_segmentation
 
 logger = logging.getLogger(__name__)
@@ -35,13 +38,16 @@ logger = logging.getLogger(__name__)
 
 def _scene_arrays(
     images: np.ndarray, world_points: np.ndarray, extrinsics: np.ndarray,
+    valid: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Flatten colored points and center points/cameras without altering inputs."""
+    """Center the visible depth range and cameras without changing export coordinates."""
     frames, height, width, _ = world_points.shape
     points = world_points.reshape(-1, 3)
     colors = (images.transpose(0, 2, 3, 1).reshape(-1, 3) * 255).astype(np.uint8)
     camera_to_world = closed_form_inverse_se3(extrinsics)[:, :3, :].copy()
     finite = np.isfinite(points).all(axis=-1)
+    if valid is not None:
+        finite &= valid.reshape(-1)
     if not np.any(finite):
         raise ValueError("No finite points are available for visualization")
     center = np.mean(points[finite], axis=0)
@@ -214,18 +220,24 @@ def visualize_scene(
     image_paths: Sequence[str | Path] | None = None,
     output_dir: str | Path | None = None,
     skyseg_path: str | Path | None = None,
-    prediction_settings: dict[str, Any] | None = None,
+    max_depth: float = DEFAULT_MAX_DEPTH,
+    run_dir: str | Path | None = None,
 ) -> viser.ViserServer:
     """Build a viewer for a prediction dict; public callers use ``visualize``.
 
     Display recentering affects viewer arrays only. Optional exports retain the
-    original prediction coordinates and are written into a new output directory.
+    original prediction coordinates and share the initial viewer mask. The CLI
+    supplies its already-created ``run_dir``; standalone Python calls create a
+    fresh ``output_dir`` only when writing a PLY or sky masks.
     ``playback_group_size`` controls display grouping, independently of inference.
     """
     if playback_group_size <= 0:
         raise ValueError("playback_group_size must be positive")
     if not 0 <= init_conf_threshold <= 100:
         raise ValueError("init_conf_threshold must be between 0 and 100")
+    validate_max_depth(max_depth)
+    if run_dir is not None and output_dir is not None:
+        raise ValueError("Use run_dir for an existing CLI run or output_dir for a fresh directory, not both")
     metadata = predictions.get("metadata", {})
     image_paths = metadata.get("image_paths") if image_paths is None else image_paths
     images = as_numpy(predictions["images"])
@@ -243,35 +255,43 @@ def visualize_scene(
     if mask_sky and (transforms is None or len(transforms) != frame_count):
         raise ValueError("Sky filtering requires preprocessing metadata from UniT.predict()")
 
-    # Reject unusable predictions before allocating a service or creating output files.
-    point_mask(world_points, confidence, init_conf_threshold)
+    # Local point maps give the depth from each camera, even when the scene is rotated.
+    camera_depth = as_numpy(predictions["cam_points"])[..., 2] if max_depth > 0 else None
+    valid_points = point_validity(
+        world_points, confidence, camera_depth=camera_depth, max_depth=max_depth,
+    )
+    initial_mask = confidence_mask(confidence, init_conf_threshold, valid_points)
 
     preflight_optional_features(save_ply=save_ply, mask_sky=mask_sky, skyseg_path=skyseg_path)
 
-    if save_ply or mask_sky or prediction_settings is not None:
+    if save_ply or mask_sky or run_dir is not None:
         protected_paths = list(image_paths or [])
         if image_folder is not None:
             protected_paths.append(str(Path(image_folder) / "_input_frame_"))
-        ensure_output_path(output_dir, protected_paths)
-        run_dir = create_output_dir(output_dir, prefix="viser")
-        if prediction_settings is not None:
-            save_predictions(predictions, run_dir, settings=prediction_settings)
-        print(f"Writing generated files to {run_dir}")
+        if run_dir is None:
+            ensure_output_path(output_dir, protected_paths)
+            run_dir = create_output_dir(output_dir, prefix="viser")
+            print(f"Writing generated files to {run_dir}")
+        else:
+            run_dir = Path(run_dir).expanduser().resolve()
+            ensure_output_path(run_dir, protected_paths)
+            if not run_dir.is_dir():
+                raise FileNotFoundError(f"Create the run directory before starting the viewer: {run_dir}")
         if mask_sky:
             confidence = apply_sky_segmentation(
                 confidence, image_paths, run_dir / "sky_masks",
                 skyseg_path=skyseg_path, transforms=transforms,
             )
+            initial_mask = confidence_mask(confidence, init_conf_threshold, valid_points)
         if save_ply:
-            save_ply_fn(
-                world_points, images, point_mask(world_points, confidence, init_conf_threshold),
-                run_dir / "scenes.ply",
-            )
+            save_ply_fn(world_points, images, initial_mask, run_dir / "scenes.ply")
 
     points, colors, camera_to_world, frame_indices = _scene_arrays(
-        images, world_points, extrinsics,
+        images, world_points, extrinsics, valid_points,
     )
     confidence = confidence.reshape(-1)
+    valid_points = valid_points.reshape(-1)
+    initial_mask = initial_mask.reshape(-1)
     # Frame membership is fixed for this viewer; no per-tick point-group allocation.
     frame_groups = np.arange(frame_count) // playback_group_size
     group_count = int(np.ceil(frame_count / playback_group_size))
@@ -282,27 +302,43 @@ def visualize_scene(
     server = viser.ViserServer(host="0.0.0.0", port=port)
     try:
         server.gui.configure_theme(titlebar_content=None, control_layout="collapsible")
-        show_cameras = server.gui.add_checkbox("Show Cameras", initial_value=True)
+        server.gui.add_markdown("Drag to orbit, scroll to zoom, or click a camera to jump to its view.")
+        if max_depth > 0:
+            server.gui.add_markdown(f"Camera depth limit: **{max_depth:g} m**.")
+        show_cameras = server.gui.add_checkbox(
+            "Show Cameras", initial_value=True, hint="Show the cameras for visible frames.",
+        )
         confidence_percent = server.gui.add_slider(
             "Confidence Percent", min=0, max=100, step=0.1,
             initial_value=init_conf_threshold,
+            hint="Hide the lowest-confidence percentage of eligible points.",
         )
         camera_size = server.gui.add_slider(
             "Camera Size", min=0.01, max=1.0, step=0.01, initial_value=0.1,
+            hint="Change the size of the camera markers.",
         )
         point_size = server.gui.add_slider(
             "Point Size", min=0.001, max=0.05, step=0.0001, initial_value=0.005,
+            hint="Change how large each point appears.",
         )
         frame_selector = server.gui.add_dropdown(
             "Show Points from Frames",
             options=["All"] + [str(i) for i in range(frame_count)], initial_value="All",
+            hint="Choose a frame or show the full scene while playback is paused.",
         )
-        playing = server.gui.add_checkbox("Playing", initial_value=False)
-        current_only = server.gui.add_checkbox("Current View", initial_value=False)
-        fps = server.gui.add_slider("FPS", min=1, max=60, step=1, initial_value=10)
-        follow_camera = server.gui.add_checkbox("Follow Camera", initial_value=False)
+        playing = server.gui.add_checkbox(
+            "Playing", initial_value=False, hint="Play the reconstruction in frame order.",
+        )
+        current_only = server.gui.add_checkbox(
+            "Current View", initial_value=False, hint="During playback, show only the active group.",
+        )
+        fps = server.gui.add_slider(
+            "FPS", min=1, max=60, step=1, initial_value=10, hint="Playback steps per second.",
+        )
+        follow_camera = server.gui.add_checkbox(
+            "Follow Camera", initial_value=False, hint="Move the viewpoint with the active camera.",
+        )
 
-        initial_mask = point_mask(points, confidence, init_conf_threshold)
         point_cloud = server.scene.add_point_cloud(
             name="viser_pcd", points=points[initial_mask], colors=colors[initial_mask],
             point_size=0.005, point_shape="circle",
@@ -314,7 +350,8 @@ def visualize_scene(
                 frame_groups, playing=playing.value, current_only=current_only.value,
                 current_group=int(anim_state["current_group"]), selected_frame=frame_selector.value,
             )
-            mask = point_mask(points, confidence, confidence_percent.value) & visible_frames[frame_indices]
+            mask = confidence_mask(confidence, confidence_percent.value, valid_points)
+            mask &= visible_frames[frame_indices]
             point_cloud.points = points[mask]
             point_cloud.colors = colors[mask]
             for index, (frame, frustum) in enumerate(zip(frames, frustums)):
