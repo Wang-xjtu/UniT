@@ -31,7 +31,7 @@ Xinhu Zheng · Meng Yang · Gang Hua
 
 ## Usage
 
-Reconstruct the bundled image sequence from the repository root.
+Run RGB reconstruction on the HKUST_Toy example from the repository root.
 
 ```python
 from unit import UniT
@@ -42,7 +42,7 @@ predictions = model.predict(inputs)
 print(predictions["world_points"].shape)
 ```
 
-With a [local checkpoint](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), use `model = UniT.from_checkpoint("checkpoints/checkpoint.pt")`.
+To load a [local checkpoint](https://huggingface.co/Haotian-sx/UniT/resolve/main/checkpoint.pt), use `model = UniT.from_checkpoint("checkpoints/checkpoint.pt")`.
 
 ### Installation
 
@@ -67,11 +67,11 @@ python -m pip install -e .
 predictions = model.predict(inputs, group_size=2, queue_capacity=8)
 ```
 
-In cached modes, `queue_capacity` defaults to the number of input frames. Set a smaller value to limit the cache, with enough room for a full group.
+In cached modes, `queue_capacity` defaults to the number of input frames. Use a smaller value to cap the history, with enough room for a full group.
 
 ## Input
 
-Replace the example `inputs` with your own sequence. Only `images` is required. Add any geometry you have and leave out the other fields.
+Only `images` is required. Add whichever geometric inputs you have to the same dictionary.
 
 ```python
 inputs = {
@@ -88,17 +88,17 @@ predictions = model.predict(inputs)
 | Field | What to pass | Notes |
 | --- | --- | --- |
 | `images` | A directory, a list of paths, or a list of PIL images or RGB NumPy arrays | Directories are read in filename order. Lists keep their order. |
-| `depth` | `[S, H₀, W₀]` or a list of 2D maps | Camera-z depth in meters. Use zeros for missing pixels or frames. |
+| `depth` | `[S, H₀, W₀]` or a list of 2D maps | Camera-z depth in meters. Use zeros for missing pixels and zero maps for missing frames. |
 | `intrinsic` | `[3, 3]` or `[S, 3, 3]` | Shared or per-frame pinhole intrinsics in original image pixels |
 | `extrinsic` | `[S, 3, 4]` or `[S, 4, 4]` | World-to-camera transforms with translation in meters |
 
 Image directories support JPEG, PNG, BMP, TIFF, and WebP. RGB arrays have shape `[H₀, W₀, 3]`, with `uint8` values in 0–255 or floats in 0–1.
 
-Pass geometry as NumPy arrays or PyTorch tensors without a batch dimension, in the same order as the images. UniT adjusts depth and intrinsics when it resizes, crops, or pads the images. Camera parameters, when supplied, must cover every frame. Camera axes are x right, y down, and z forward.
+Provide geometry for the original images, in the same frame order, as NumPy arrays or PyTorch tensors without a batch dimension. UniT adjusts depth and intrinsics to match image resizing, cropping, and padding. Camera parameters, when provided, must be valid for every frame. Camera axes are x right, y down, and z forward.
 
 ## Output
 
-The tensors in `predictions` are on CPU and have no batch dimension. Point coordinates, camera translations, and depth are in meters, including for RGB-only input. Use the local point map to read camera-z depth.
+The tensors in `predictions` are on CPU without a batch dimension. Point coordinates, camera translations, and depth are in meters, including when the input is RGB-only. Read camera-z depth from the local point map.
 
 ```python
 depth = predictions["cam_points"][..., 2]  # [S, H, W]
@@ -115,7 +115,7 @@ depth = predictions["cam_points"][..., 2]  # [S, H, W]
 
 ## Visualization
 
-Install the demo extra to view the predictions from above.
+Install the demo extra, then pass `predictions` to the viewer.
 
 ```bash
 python -m pip install -e '.[demo]'
@@ -127,16 +127,22 @@ from unit.visualization import visualize
 visualize(predictions)
 ```
 
-Open the URL printed in your terminal. Pass `save_ply=True` to also export a point cloud from Python.
+Open the printed URL. Pass `save_ply=True` to also export a point cloud.
 
-To reconstruct and view the bundled sequence in one command, run `python demo_viser.py`. Add `--images /path/to/images` to use your own images. The demo saves `scenes.ply` in a new folder under `outputs/`.
+Run `python demo_viser.py` for HKUST_Toy. To try HKUST_INTR, start with every fourth frame.
+
+```bash
+python demo_viser.py --images examples/HKUST_INTR/images --stride 4
+```
+
+Drop `--stride 4` to use all 50 frames. To use your own sequence, pass `--images /path/to/images`. The demo saves `scenes.ply` in a new folder under `outputs/`.
 
 - `--no-save-ply` opens the viewer without exporting a point cloud.
 - `--no-viewer` exports the point cloud and exits.
 
-The viewer and PLY use an **80 m camera-z depth limit** by default. Use `--max-depth 0` or `max_depth=0` in Python to disable it. The confidence cutoff is a percentile, set by `--conf-threshold` (default 25) or `init_conf_threshold` in Python (default 50). PLY export uses the initial settings. The prediction tensors keep all points.
+The viewer and PLY use an **80 m camera-z depth limit** by default. Set `--max-depth 0` or `max_depth=0` in Python to disable it. The confidence filter hides points below the selected percentile. `--conf-threshold` defaults to 25, and `init_conf_threshold` in Python defaults to 50. PLY export uses the initial filters, and the prediction tensors keep all points.
 
-Run `python demo_viser.py --help` for the other options.
+Run `python demo_viser.py --help` for more options.
 
 ---
 

@@ -12,11 +12,14 @@ outputs/
 *.npz
 *.log
 
-# Keep the bundled RGB example.
+# Keep the bundled RGB examples.
 examples/*
 !examples/HKUST_Toy/
+!examples/HKUST_INTR/
 examples/HKUST_Toy/*
+examples/HKUST_INTR/*
 !examples/HKUST_Toy/images/
+!examples/HKUST_INTR/images/
 
 # Local tools, caches and build products.
 .codex
