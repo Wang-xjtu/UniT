@@ -1,0 +1,7 @@
+# Third-party notices
+
+The source files retain their original copyright notices. Files with separate license notices remain subject to those licenses.
+
+- **VGGT** (Meta Platforms, Inc. and affiliates). UniT adapts the model, prediction heads, geometry utilities, image preprocessing, and viewer from [VGGT](https://github.com/facebookresearch/vggt). The CC BY-NC 4.0 terms for these portions are in [LICENSE.txt](LICENSE.txt), except where a file carries a separate license notice. UniT adds multimodal inputs and grouped inference and changes the prediction, preprocessing, and visualization code.
+- **Transformer layers** (Meta Platforms, Inc. and affiliates). The Apache-licensed files in `unit/layers/` retain their upstream references to VGGT, DINO and `timm`, where applicable. The [Apache License 2.0](licenses/Apache-2.0.txt) applies to the files carrying its notice.
+- **Depth Anything 3** (Copyright (c) 2025 ByteDance Ltd. and/or its affiliates). `unit/utils/pose_align.py` adapts the [pose alignment](https://github.com/ByteDance-Seed/Depth-Anything-3/blob/main/src/depth_anything_3/utils/pose_align.py) and [geometry](https://github.com/ByteDance-Seed/Depth-Anything-3/blob/main/src/depth_anything_3/utils/geometry.py) utilities. UniT retains the required alignment functions and includes their NumPy geometry helpers in the same module. These portions remain under the [Apache License 2.0](licenses/Apache-2.0.txt).

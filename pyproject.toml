@@ -1,0 +1,38 @@
+[project]
+name = "unit"
+version = "0.1.0"
+description = "UniT: Unified Geometry Learning with Group Causal Transformer"
+readme = "README.md"
+authors = [{name = "Haotian Wang"}]
+requires-python = ">=3.11"
+license = {file = "LICENSE.txt"}
+dependencies = [
+    "torch==2.8.0",
+    "numpy==2.2.2",
+    "Pillow==11.3.0",
+    "huggingface-hub>=0.34,<2",
+    "safetensors>=0.4.5,<1",
+]
+
+[project.optional-dependencies]
+demo = [
+    "viser==0.2.23",
+    "trimesh==4.7.0",
+]
+sky = ["onnxruntime==1.23.1", "opencv-python==4.12.0.88"]
+postprocess = ["evo>=1.30,<2"]
+
+[project.urls]
+Repository = "https://github.com/Wang-xjtu/UniT"
+"Project page" = "https://omega-hkustgz.github.io/projects/unit"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+license-files = ["LICENSE.txt", "THIRD_PARTY_NOTICES.md", "licenses/Apache-2.0.txt"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["unit*"]

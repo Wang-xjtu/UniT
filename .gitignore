@@ -1,0 +1,33 @@
+# Model weights and generated artifacts stay local.
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+outputs/
+**/points/
+**/*_sky_masks/
+*.ply
+*.npz
+*.log
+
+# Keep the bundled RGB example.
+examples/*
+!examples/inference.py
+!examples/HKUST_Toy/
+examples/HKUST_Toy/*
+!examples/HKUST_Toy/images/
+
+# Local tools, caches and build products.
+.codex
+.vscode/
+.idea/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.DS_Store
